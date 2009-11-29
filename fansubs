@@ -1,0 +1,152 @@
+#!/usr/bin/ruby
+require 'open-uri'
+require 'pp'
+require 'iconv'
+require 'shell'
+require 'ftools'
+
+$KCODE = "u"
+
+class FansubsLoader
+  # params
+  @@sh = Shell.new
+  @@data_dir = '/home/fansubs/'
+  @@cache_dir = @@data_dir+'.cache/'
+  @@cache_file = @@cache_dir+'data'
+
+  @@forum_url = 'http://fansubs.ru/forum/'
+  @@forum_page_url = @@forum_url+'viewforum.php?f=5&topicdays=0&start='
+
+  def initialize
+    # data dir
+    unless File.exists?(@@data_dir)
+      Dir.mkdir(@@data_dir)
+      File.chmod(0777, @@data_dir)
+    end
+    # cache dir
+    unless File.exists?(@@cache_dir)
+      Dir.mkdir(@@cache_dir)
+      File.chmod(0777, @@cache_dir)
+    end
+
+    @data = {}
+    # attempt to load @data from cache
+    File.open(@@cache_file, "r") {|f| @data = Marshal.load(f) } if File.exists?(@@cache_file)
+
+    # do not parse forum page if there are any entry to update
+    unless @data.any? {|key,val| val[:to_update] }
+      page = 0
+      while parse_forum_page(page) != 0
+        page += 1
+      end
+      echo "\n";
+    end
+    echo @data.inject(0) {|rez,val| val[1][:to_update] ? rez+1 : rez }.to_s+' entries to update'
+    echo "\n";
+
+    # parse each @data entry
+    @data.each do |id,item|
+      next unless item[:to_update];
+
+      unless File.exists?(item[:dir])
+        Dir.mkdir(item[:dir])
+        File.chmod(0777, item[:dir])
+      end
+
+      parse_forum_theme(item)
+
+      # make backup
+      File.cp(@@cache_file, @@cache_file + ' ' + Time.new.strftime("%Y-%m-%d")) if File.exists?(@@cache_file)
+      File.cp(@@cache_file, @@cache_file + ' last') if File.exists?(@@cache_file)
+      # save @data to cache file
+      File.open(@@cache_file, "w") {|f| Marshal.dump(@data, f) }
+    end
+
+    echo "\nScript finished successfully"
+  end
+
+
+  def echo(message)
+    puts message
+    #(@@sh.echo "#{message}") > STDOUT
+    #print "\033[32;1m#{message}\33[0m"
+  end
+
+
+  # parse thread page, download parsed archives, unpack archives
+  def parse_forum_theme(item)
+    echo "Parsing #{item[:name]} #{item[:url]}";
+
+    loaded_data = nil
+    open(item[:url]) { |f| loaded_data = Iconv.iconv('utf-8', 'cp1251', f.read)[0] };
+
+    parsed_items = 0
+    tmp_file = item[:dir].+'tmp'
+
+    # download files loop
+    loaded_data.gsub(/<a href=".\/(download.php\?id=\d+)">[^<]+<\/a>/) do |line|
+      data = line.match(/<a href=".\/(download.php\?id=(\d+))">([^<]+)<\/a>/)
+      next if item[:downloaded][data[2]]
+
+      item[:downloaded][data[2]] = @@forum_url+data[1]
+
+      echo("Downloading #{data[3]}")
+      open(item[:downloaded][data[2]]) do |f|
+        file = File.new(tmp_file, "wb")
+        file.write(f.read)
+        file.close
+      end
+      Dir.chdir(item[:dir])
+      # unpack archive
+      %x(e "#{tmp_file}")
+      parsed_items += 1
+    end
+    # delete tmp file
+    File.delete(tmp_file) if File.exists?(tmp_file)
+
+    echo("#{parsed_items} new subs downloaded.\n\n")
+    item[:to_update] = false
+  end
+
+
+  # parse forum page and fill in @data hash
+  def parse_forum_page(page)
+    url = @@forum_page_url+(page*50).to_s
+    echo("Parsing #{page+1} page #{url}");
+
+    # load forum page
+    loaded_data = nil
+    open(url) { |f| loaded_data = Iconv.iconv('utf-8', 'cp1251', f.read)[0] };
+
+    parsed_items = 0
+    loaded_data.gsub(/<tr>[\s\S]*?<\/tr>/) do |line|
+      next unless line.match(/<td class="row1" align="center" valign="middle"/)
+
+      id = line.match(/viewtopic.php\?t=(\d+)/)[1]
+
+      # update entry in @data hash or add new entry
+      if tmp = line.match(/<span class="topictitle"><a href="([^&"]+)[^"]*" class="topictitle">(.*?)<\/a><\/span>/)
+        new_item = {:id         => id,
+                    :name       => tmp[2].gsub('&amp;', '&').gsub('&quot', '').gsub('/', '-'),
+                    :url        => @@forum_url+tmp[1],
+                    :dir        => '',
+                    :lastmod    => line.match(/<span class="postdetails">([^<]+)<br \/>/)[1],
+                    :downloaded => {},
+                    :to_update  => true
+                   }
+        new_item[:dir] = @@data_dir + new_item[:name] + '/'
+        unless @data[id]
+          @data[id] = new_item
+        else
+          @data[id][:to_update] = @data[id][:lastmod] != new_item[:lastmod]
+          @data[id][:lastmod] = new_item[:lastmod]
+        end
+        parsed_items += 1 if @data[id][:to_update]
+      end
+    end
+    echo("#{parsed_items} updated topics found")
+    parsed_items
+  end
+end
+
+loader = FansubsLoader.new
