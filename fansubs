@@ -149,4 +149,5 @@ class FansubsLoader
   end
 end
 
+# start
 loader = FansubsLoader.new
