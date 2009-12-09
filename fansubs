@@ -10,6 +10,7 @@ $KCODE = "u"
 class FansubsLoader
   # params
   @@sh = Shell.new
+  @@tmp_dir = '/tmp/fansubs/'
   @@data_dir = '/home/fansubs/'
   @@cache_dir = @@data_dir+'.cache/'
   @@cache_file = @@cache_dir+'data'
@@ -21,13 +22,20 @@ class FansubsLoader
     # data dir
     unless File.exists?(@@data_dir)
       Dir.mkdir(@@data_dir)
-      File.chmod(0777, @@data_dir)
+      #File.chmod(0777, @@data_dir)
     end
     # cache dir
     unless File.exists?(@@cache_dir)
       Dir.mkdir(@@cache_dir)
-      File.chmod(0777, @@cache_dir)
+      #File.chmod(0777, @@cache_dir)
     end
+    # tmp dir
+    if File.exists?(@@tmp_dir)
+      Dir.foreach(@@tmp_dir) {|f| File.delete(@@tmp_dir+f) if f != '.' && f != '..' }
+      Dir.rmdir(@@tmp_dir);
+    end
+    Dir.mkdir(@@tmp_dir)
+    #File.chmod(0777, @@tmp_dir)
 
     @data = {}
     # attempt to load @data from cache
@@ -50,7 +58,7 @@ class FansubsLoader
 
       unless File.exists?(item[:dir])
         Dir.mkdir(item[:dir])
-        File.chmod(0777, item[:dir])
+        #File.chmod(0777, item[:dir])
       end
 
       parse_forum_theme(item)
@@ -81,12 +89,12 @@ class FansubsLoader
     open(item[:url]) { |f| loaded_data = Iconv.iconv('utf-8', 'cp1251', f.read)[0] };
 
     parsed_items = 0
-    tmp_file = item[:dir].+'tmp'
 
     # download files loop
     loaded_data.gsub(/<a href=".\/(download.php\?id=\d+)">[^<]+<\/a>/) do |line|
       data = line.match(/<a href=".\/(download.php\?id=(\d+))">([^<]+)<\/a>/)
       next if item[:downloaded][data[2]]
+      tmp_file = @@tmp_dir+data[2]
 
       item[:downloaded][data[2]] = @@forum_url+data[1]
 
@@ -102,7 +110,7 @@ class FansubsLoader
       parsed_items += 1
     end
     # delete tmp file
-    File.delete(tmp_file) if File.exists?(tmp_file)
+    #File.delete(tmp_file) if File.exists?(tmp_file)
 
     echo("#{parsed_items} new subs downloaded.\n\n")
     item[:to_update] = false
