@@ -4,12 +4,13 @@ require 'pp'
 require 'iconv'
 require 'shell'
 require 'ftools'
+require 'rubygems'
+require 'libnotify'
 
 $KCODE = "u"
 
 class FansubsLoader
   # params
-  @@sh = Shell.new
   @@tmp_dir = '/tmp/fansubs/'
   @@data_dir = '/home/fansubs/'
   @@cache_dir = @@data_dir+'.cache/'
@@ -41,7 +42,7 @@ class FansubsLoader
     # attempt to load @data from cache
     File.open(@@cache_file, "r") {|f| @data = Marshal.load(f) } if File.exists?(@@cache_file)
 
-    # do not parse forum page if there are any entry to update
+    # do not parse forum page if there are any entries to update
     unless @data.any? {|key,val| val[:to_update] }
       page = 0
       while parse_forum_page(page) != 0
@@ -55,12 +56,6 @@ class FansubsLoader
     # parse each @data entry
     @data.each do |id,item|
       next unless item[:to_update];
-
-      unless File.exists?(item[:dir])
-        Dir.mkdir(item[:dir])
-        #File.chmod(0777, item[:dir])
-      end
-
       parse_forum_theme(item)
 
       # make backup
@@ -75,8 +70,8 @@ class FansubsLoader
 
 
   def echo(message)
+    system("echo '#{message}' >> /tmp/fansubs.log")
     puts message
-    #(@@sh.echo "#{message}") > STDOUT
     #print "\033[32;1m#{message}\33[0m"
   end
 
@@ -96,17 +91,25 @@ class FansubsLoader
       next if item[:downloaded][data[2]]
       tmp_file = @@tmp_dir+data[2]
 
-      item[:downloaded][data[2]] = @@forum_url+data[1]
+      url = @@forum_url+data[1]
 
       echo("Downloading #{data[3]}")
-      open(item[:downloaded][data[2]]) do |f|
+      open(url) do |f|
+        unless File.exists?(item[:dir])
+          Dir.mkdir(item[:dir])
+          File.chmod(0777, item[:dir])
+        end
+
         file = File.new(tmp_file, "wb")
         file.write(f.read)
         file.close
+
+        item[:downloaded][data[2]] = url
+        Dir.chdir(item[:dir])
+        # unpack archive
+        system("ruby /usr/local/bin/e '#{tmp_file}'")
       end
-      Dir.chdir(item[:dir])
-      # unpack archive
-      %x(e "#{tmp_file}")
+      %x(/home/morr/scripts/notify --summary fansubs.ru --body "#{item[:name]}\n#{data[3]}" --icon /usr/share/icons/gnome/scalable/emblems/emblem-downloads.svg)#
       parsed_items += 1
     end
     # delete tmp file
@@ -158,4 +161,8 @@ class FansubsLoader
 end
 
 # start
-loader = FansubsLoader.new
+while 1
+  loader = FansubsLoader.new
+  puts "done"
+  sleep(18000);
+end
