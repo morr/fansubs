@@ -3,7 +3,7 @@ require 'open-uri'
 require 'pp'
 require 'iconv'
 require 'shell'
-require 'ftools'
+require 'fileutils'
 require 'rubygems'
 require 'libnotify'
 
@@ -59,8 +59,8 @@ class FansubsLoader
       parse_forum_theme(item)
 
       # make backup
-      File.cp(@@cache_file, @@cache_file + ' ' + Time.new.strftime("%Y-%m-%d")) if File.exists?(@@cache_file)
-      File.cp(@@cache_file, @@cache_file + ' last') if File.exists?(@@cache_file)
+      FileUtils.cp(@@cache_file, @@cache_file + ' ' + Time.new.strftime("%Y-%m-%d")) if File.exists?(@@cache_file)
+      FileUtils.cp(@@cache_file, @@cache_file + ' last') if File.exists?(@@cache_file)
       # save @data to cache file
       File.open(@@cache_file, "w") {|f| Marshal.dump(@data, f) }
     end
