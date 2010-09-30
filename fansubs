@@ -5,7 +5,7 @@ require 'iconv'
 require 'shell'
 require 'fileutils'
 require 'rubygems'
-require 'libnotify'
+#require 'libnotify'
 
 $KCODE = "u"
 
@@ -109,7 +109,10 @@ class FansubsLoader
         # unpack archive
         system("ruby /usr/local/bin/e '#{tmp_file}'")
       end
-      %x(/home/morr/scripts/notify --summary fansubs.ru --body "#{item[:name]}\n#{data[3]}" --icon /usr/share/icons/gnome/scalable/emblems/emblem-downloads.svg)#
+      begin
+        %x(/home/morr/scripts/notify --summary fansubs.ru --body "#{item[:name]}\n#{data[3]}" --icon /usr/share/icons/gnome/scalable/emblems/emblem-downloads.svg)#
+      rescue
+      end
       parsed_items += 1
     end
     # delete tmp file
